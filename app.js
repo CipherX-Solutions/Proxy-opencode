@@ -1,4 +1,5 @@
-// app.js - CommonJS Bridge for Hostinger Phusion Passenger
-import('./server.mjs').catch((err) => {
-  console.error('Failed to start server.mjs:', err);
+
+// app.js - CommonJS wrapper for Hostinger Phusion Passenger
+import('./oc-api-proxy.mjs').catch((err) => {
+  console.error('Failed to load oc-api-proxy.mjs:', err);
 });
