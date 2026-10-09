@@ -11,19 +11,30 @@ const app = express();
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-opencode-client']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-opencode-client', 'x-opencode-session']
 }));
 
 app.use(express.json({ limit: '10mb' }));
 
-// Active OpenCode Zen Free Tier Model Map
+// Active OpenCode Zen Free Models Map
 const MODEL_MAP = {
-  'deepseek-v4-flash-free': 'big-pickle',
   'big-pickle': 'big-pickle',
   'mimo-v2.6-flash-free': 'mimo-v2.6-flash-free',
+  'mimo-v2.5-free': 'mimo-v2.5-free',
   'space-bunny-free': 'space-bunny-free',
-  'longcat-2.5-preview-free': 'longcat-2.5-preview-free'
+  'longcat-2.5-preview-free': 'longcat-2.5-preview-free',
+  'qwen3.6-plus-free': 'qwen3.6-plus-free',
+  // Auto-map retired or alias names
+  'deepseek-v4-flash-free': 'big-pickle',
+  'gpt-4o-mini-free': 'mimo-v2.6-flash-free'
 };
+
+// Generates valid OpenCode hex-timestamped session ID
+function generateOpenCodeSession() {
+  const hexTimestamp = Math.floor(Date.now()).toString(16);
+  const randomTail = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  return `ses_${hexTimestamp}${randomTail}`;
+}
 
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -55,18 +66,21 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
-    // Fallback to big-pickle if model name is unrecognized or retired
     const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
+    const clientAuth = req.headers['authorization'] || 'Bearer public';
+
+    // Injected OpenCode 1.18.32 fingerprint headers
     const bypassHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer public',
-      'User-Agent': 'opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13',
+      'Authorization': clientAuth,
+      'User-Agent': 'opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14',
       'x-opencode-client': 'cli',
+      'x-opencode-version': '1.18.32',
       'x-opencode-project': 'global',
-      'x-opencode-request': `msg_${Math.random().toString(36).substring(2, 12)}`,
-      'x-opencode-session': `ses_${Math.random().toString(36).substring(2, 12)}`
+      'x-opencode-session': generateOpenCodeSession(),
+      'x-opencode-request': `msg_${Math.random().toString(36).substring(2, 12)}`
     };
 
     const upstreamResponse = await fetch(upstreamUrl, {
