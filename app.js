@@ -1,5 +1,4 @@
-
-// app.js - CommonJS wrapper for Hostinger Phusion Passenger
+// app.js - Phusion Passenger CommonJS Wrapper
 import('./oc-api-proxy.mjs').catch((err) => {
-  console.error('Failed to load oc-api-proxy.mjs:', err);
+  console.error('Failed to start oc-api-proxy.mjs:', err);
 });
