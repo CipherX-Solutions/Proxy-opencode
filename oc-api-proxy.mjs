@@ -8,7 +8,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Enable global CORS for external tools
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -17,7 +16,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Root Status
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
@@ -28,7 +26,6 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// OpenAI Models List
 app.get('/v1/models', (req, res) => {
   res.status(200).json({
     object: 'list',
@@ -41,7 +38,6 @@ app.get('/v1/models', (req, res) => {
   });
 });
 
-// OpenAI Chat Completions Handler
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { model, messages, stream, temperature, top_p } = req.body;
@@ -53,7 +49,6 @@ app.post('/v1/chat/completions', async (req, res) => {
     const targetModel = model || 'deepseek-v4-flash-free';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
-    // Injected Bypass Headers
     const bypassHeaders = {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer public',
@@ -99,54 +94,6 @@ app.post('/v1/chat/completions', async (req, res) => {
   }
 });
 
-// Anthropic Compatible Handler
-app.post('/v1/messages', async (req, res) => {
-  try {
-    const { model, messages } = req.body;
-
-    const formattedMessages = (messages || []).map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-    }));
-
-    const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
-    const upstreamResponse = await fetch(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer public',
-        'User-Agent': 'opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13',
-        'x-opencode-client': 'cli',
-        'x-opencode-project': 'global',
-        'x-opencode-request': `msg_${Math.random().toString(36).substring(2, 12)}`,
-        'x-opencode-session': `ses_${Math.random().toString(36).substring(2, 12)}`
-      },
-      body: JSON.stringify({
-        model: model || 'deepseek-v4-flash-free',
-        messages: formattedMessages,
-        stream: false
-      })
-    });
-
-    const data = await upstreamResponse.json();
-    const assistantContent = data.choices?.[0]?.message?.content || '';
-
-    return res.status(200).json({
-      id: `msg_${Date.now()}`,
-      type: 'message',
-      role: 'assistant',
-      model: model || 'deepseek-v4-flash-free',
-      content: [{ type: 'text', text: assistantContent }],
-      stop_reason: 'end_turn',
-      usage: { input_tokens: 10, output_tokens: 20 }
-    });
-  } catch (error) {
-    console.error('Anthropic Bypass Error:', error);
-    return res.status(500).json({ error: { type: 'api_error', message: error.message } });
-  }
-});
-
-// Hostinger Passenger Port Listener
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Bypass Proxy running on port ${PORT} for AI.cpxs.ca`);
