@@ -1,7 +1,7 @@
 {
-  "name": "opencode-free-proxy",
+  "name": "free-opencode-proxy",
   "version": "1.0.0",
-  "description": "OpenCode Free Proxy for Hostinger",
+  "description": "OpenCode Free Proxy for AI.cpxs.ca",
   "main": "app.js",
   "type": "module",
   "scripts": {
