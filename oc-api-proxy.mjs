@@ -1,10 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -16,7 +11,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Active OpenCode Zen Free Models Map
 const MODEL_MAP = {
   'big-pickle': 'big-pickle',
   'mimo-v2.6-flash-free': 'mimo-v2.6-flash-free',
@@ -25,7 +19,6 @@ const MODEL_MAP = {
   'qwen3.6-plus-free': 'qwen3.6-plus-free',
   'space-bunny-free': 'space-bunny-free',
   'longcat-2.5-preview-free': 'longcat-2.5-preview-free',
-  // Legacy aliases mapped to active models
   'deepseek-v4-flash-free': 'big-pickle'
 };
 
@@ -44,6 +37,15 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Debug endpoint to verify if Hostinger loaded your session token
+app.get('/debug', (req, res) => {
+  const envToken = process.env.OPENCODE_SESSION_TOKEN;
+  res.status(200).json({
+    hasEnvToken: !!envToken && envToken !== 'public',
+    tokenPreview: envToken ? `${envToken.substring(0, 8)}...` : 'NONE'
+  });
+});
 
 app.get('/v1/models', (req, res) => {
   res.status(200).json({
@@ -65,16 +67,32 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
-    // Retrieve Hostinger environment token or fall back to public
-    const rawToken = process.env.OPENCODE_SESSION_TOKEN || 'public';
-    const authToken = rawToken.startsWith('Bearer ') ? rawToken : `Bearer ${rawToken}`;
+    // Use token sent in cURL/Client header FIRST, then fallback to Hostinger env var
+    const incomingAuth = req.headers['authorization'];
+    const envToken = process.env.OPENCODE_SESSION_TOKEN;
+    
+    let activeToken = 'public';
+    if (incomingAuth && incomingAuth !== 'Bearer test' && incomingAuth !== 'Bearer public') {
+      activeToken = incomingAuth;
+    } else if (envToken) {
+      activeToken = envToken.startsWith('Bearer ') ? envToken : `Bearer ${envToken}`;
+    }
+
+    if (activeToken === 'public') {
+      return res.status(401).json({
+        error: {
+          message: "Missing OpenCode token. Pass your OpenCode token in the Authorization header ('Authorization: Bearer YOUR_TOKEN') or set OPENCODE_SESSION_TOKEN in Hostinger.",
+          type: "unauthorized"
+        }
+      });
+    }
 
     const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
     const bypassHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': authToken,
+      'Authorization': activeToken,
       'User-Agent': 'opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14',
       'x-opencode-client': 'cli',
       'x-opencode-version': '1.18.32',
