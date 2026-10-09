@@ -21,15 +21,14 @@ const MODEL_MAP = {
   'big-pickle': 'big-pickle',
   'mimo-v2.6-flash-free': 'mimo-v2.6-flash-free',
   'mimo-v2.5-free': 'mimo-v2.5-free',
+  'minimax-m2.5-free': 'minimax-m2.5-free',
+  'qwen3.6-plus-free': 'qwen3.6-plus-free',
   'space-bunny-free': 'space-bunny-free',
   'longcat-2.5-preview-free': 'longcat-2.5-preview-free',
-  'qwen3.6-plus-free': 'qwen3.6-plus-free',
-  // Auto-map retired or alias names
-  'deepseek-v4-flash-free': 'big-pickle',
-  'gpt-4o-mini-free': 'mimo-v2.6-flash-free'
+  // Legacy aliases mapped to active models
+  'deepseek-v4-flash-free': 'big-pickle'
 };
 
-// Generates valid OpenCode hex-timestamped session ID
 function generateOpenCodeSession() {
   const hexTimestamp = Math.floor(Date.now()).toString(16);
   const randomTail = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
@@ -66,15 +65,16 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
+    // Retrieve Hostinger environment token or fall back to public
+    const rawToken = process.env.OPENCODE_SESSION_TOKEN || 'public';
+    const authToken = rawToken.startsWith('Bearer ') ? rawToken : `Bearer ${rawToken}`;
+
     const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
-    const clientAuth = req.headers['authorization'] || 'Bearer public';
-
-    // Injected OpenCode 1.18.32 fingerprint headers
     const bypassHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': clientAuth,
+      'Authorization': authToken,
       'User-Agent': 'opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14',
       'x-opencode-client': 'cli',
       'x-opencode-version': '1.18.32',
