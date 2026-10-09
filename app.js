@@ -1,4 +1,8 @@
-// app.js - Phusion Passenger CommonJS Wrapper
-import('./oc-api-proxy.mjs').catch((err) => {
-  console.error('Failed to start oc-api-proxy.mjs:', err);
-});
+// app.js - CommonJS Loader for Phusion Passenger
+(async () => {
+  try {
+    await import('./oc-api-proxy.mjs');
+  } catch (err) {
+    console.error('Startup Error:', err);
+  }
+})();
