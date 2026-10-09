@@ -16,6 +16,15 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
+// Active OpenCode Zen Free Tier Model Map
+const MODEL_MAP = {
+  'deepseek-v4-flash-free': 'big-pickle',
+  'big-pickle': 'big-pickle',
+  'mimo-v2.6-flash-free': 'mimo-v2.6-flash-free',
+  'space-bunny-free': 'space-bunny-free',
+  'longcat-2.5-preview-free': 'longcat-2.5-preview-free'
+};
+
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
@@ -29,12 +38,12 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/v1/models', (req, res) => {
   res.status(200).json({
     object: 'list',
-    data: [
-      { id: 'deepseek-v4-flash-free', object: 'model', created: 1700000000, owned_by: 'opencode-zen' },
-      { id: 'qwen3.6-plus-free', object: 'model', created: 1700000000, owned_by: 'opencode-zen' },
-      { id: 'minimax-m2.5-free', object: 'model', created: 1700000000, owned_by: 'opencode-zen' },
-      { id: 'mimo-v2.5-free', object: 'model', created: 1700000000, owned_by: 'opencode-zen' }
-    ]
+    data: Object.keys(MODEL_MAP).map(id => ({
+      id,
+      object: 'model',
+      created: 1700000000,
+      owned_by: 'opencode-zen'
+    }))
   });
 });
 
@@ -46,7 +55,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
-    const targetModel = model || 'deepseek-v4-flash-free';
+    // Fallback to big-pickle if model name is unrecognized or retired
+    const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
     const bypassHeaders = {
