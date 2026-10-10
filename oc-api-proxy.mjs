@@ -35,18 +35,18 @@ function generateCanonicalId(prefix) {
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
-    domain: 'AI.cpxs.ca',
+    domain: 'ai.tatpc.ca',
     service: 'OpenCode Free Model Bypass Proxy'
   });
 });
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// Debug endpoint to check Hostinger environment variables
 app.get('/debug', (req, res) => {
   const envToken = process.env.OPENCODE_SESSION_TOKEN;
   const proxyKey = process.env.PROXY_API_KEY;
   res.status(200).json({
+    domain: 'ai.tatpc.ca',
     hasOpenCodeToken: !!envToken && envToken !== 'public',
     openCodeTokenPreview: envToken ? `${envToken.substring(0, 8)}...` : 'NONE',
     isProxyKeyProtected: !!proxyKey
@@ -77,7 +77,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     const requiredProxyKey = process.env.PROXY_API_KEY;
     const envOpenCodeToken = process.env.OPENCODE_SESSION_TOKEN;
 
-    // 1. Check Proxy API Key (if configured on Hostinger)
+    // 1. Authenticate Proxy Key
     if (requiredProxyKey) {
       const expectedProxyAuth = requiredProxyKey.startsWith('Bearer ') ? requiredProxyKey : `Bearer ${requiredProxyKey}`;
       if (!clientAuth || clientAuth !== expectedProxyAuth) {
@@ -87,7 +87,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       }
     }
 
-    // 2. Select Upstream OpenCode Token
+    // 2. Attach Upstream Token
     let upstreamAuth = null;
     if (envOpenCodeToken && envOpenCodeToken !== 'public') {
       upstreamAuth = envOpenCodeToken.startsWith('Bearer ') ? envOpenCodeToken : `Bearer ${envOpenCodeToken}`;
@@ -95,7 +95,6 @@ app.post('/v1/chat/completions', async (req, res) => {
       upstreamAuth = clientAuth;
     }
 
-    // Guardrail against sending unauthenticated calls to OpenCode
     if (!upstreamAuth) {
       return res.status(401).json({
         error: {
@@ -173,7 +172,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.delta?.text || '';
             accumulatedContent += delta;
           } catch (e) {
-            // Ignore stream chunk parsing errors
+            // Ignore partial SSE parsing errors
           }
         }
       }
@@ -201,5 +200,5 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Bypass Proxy running on port ${PORT} for AI.cpxs.ca`);
+  console.log(`Bypass Proxy running on port ${PORT} for ai.tatpc.ca`);
 });
