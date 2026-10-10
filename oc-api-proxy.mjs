@@ -73,43 +73,33 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
-    const clientAuth = req.headers['authorization'];
-    const requiredProxyKey = process.env.PROXY_API_KEY;
-    const envOpenCodeToken = process.env.OPENCODE_SESSION_TOKEN;
-
-    // 1. Authenticate Proxy Key
-    if (requiredProxyKey) {
-      const expectedProxyAuth = requiredProxyKey.startsWith('Bearer ') ? requiredProxyKey : `Bearer ${requiredProxyKey}`;
-      if (!clientAuth || clientAuth !== expectedProxyAuth) {
+    // 1. CLIENT AUTHENTICATION (Validate client's request against PROXY_API_KEY)
+    const proxyKey = process.env.PROXY_API_KEY;
+    if (proxyKey) {
+      const clientAuthHeader = req.headers['authorization'];
+      const expectedClientHeader = proxyKey.startsWith('Bearer ') ? proxyKey : `Bearer ${proxyKey}`;
+      if (!clientAuthHeader || clientAuthHeader !== expectedClientHeader) {
         return res.status(401).json({
           error: { message: 'Unauthorized: Invalid or missing Proxy API Key', type: 'invalid_request_error' }
         });
       }
     }
 
-    // 2. Attach Upstream Token
-    let upstreamAuth = null;
-    if (envOpenCodeToken && envOpenCodeToken !== 'public') {
-      upstreamAuth = envOpenCodeToken.startsWith('Bearer ') ? envOpenCodeToken : `Bearer ${envOpenCodeToken}`;
-    } else if (clientAuth && clientAuth !== 'Bearer public' && clientAuth !== `Bearer ${requiredProxyKey}`) {
-      upstreamAuth = clientAuth;
-    }
-
-    if (!upstreamAuth) {
-      return res.status(401).json({
-        error: {
-          message: "OPENCODE_SESSION_TOKEN missing in Hostinger environment variables.",
-          type: "missing_opencode_token"
-        }
+    // 2. UPSTREAM AUTHENTICATION (Always force OPENCODE_SESSION_TOKEN)
+    const openCodeToken = process.env.OPENCODE_SESSION_TOKEN;
+    if (!openCodeToken || openCodeToken === 'public') {
+      return res.status(500).json({
+        error: { message: 'Server Configuration Error: OPENCODE_SESSION_TOKEN is missing in Hostinger.' }
       });
     }
 
+    const upstreamAuth = openCodeToken.startsWith('Bearer ') ? openCodeToken : `Bearer ${openCodeToken}`;
     const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
     const bypassHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': upstreamAuth,
+      'Authorization': upstreamAuth, // Ensures OpenCode receives the valid session token
       'User-Agent': 'opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14',
       'x-opencode-client': 'cli',
       'x-opencode-version': '1.18.31',
@@ -172,7 +162,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.delta?.text || '';
             accumulatedContent += delta;
           } catch (e) {
-            // Ignore partial SSE parsing errors
+            // Ignore SSE chunk parsing errors
           }
         }
       }
