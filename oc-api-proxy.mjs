@@ -22,7 +22,6 @@ const MODEL_MAP = {
   'deepseek-v4-flash-free': 'big-pickle'
 };
 
-// Generates canonical OpenCode IDs: <prefix>_<12-hex><14-base62>
 function generateCanonicalId(prefix) {
   const hex12 = Math.floor(Date.now()).toString(16).padStart(12, '0').slice(-12);
   const base62Chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -33,30 +32,15 @@ function generateCanonicalId(prefix) {
   return `${prefix}_${hex12}${base62Tail}`;
 }
 
-function sanitizeEnvVar(value) {
-  if (!value) return '';
-  return value.trim().replace(/^["']|["']$/g, '');
-}
-
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
-    domain: 'ai.tatpc.ca',
+    domain: 'AI.cpxs.ca',
     service: 'OpenCode Free Model Bypass Proxy'
   });
 });
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
-
-app.get('/debug', (req, res) => {
-  const envToken = sanitizeEnvVar(process.env.OPENCODE_SESSION_TOKEN);
-  res.status(200).json({
-    domain: 'ai.tatpc.ca',
-    hasOpenCodeToken: !!envToken && envToken !== 'public',
-    openCodeTokenPreview: envToken ? `${envToken.substring(0, 8)}...` : 'NONE',
-    proxyKeyProtected: false
-  });
-});
 
 app.get('/v1/models', (req, res) => {
   res.status(200).json({
@@ -78,15 +62,25 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
-    // UPSTREAM AUTHENTICATION (Always inject OPENCODE_SESSION_TOKEN from Hostinger)
-    const rawOpenCodeToken = sanitizeEnvVar(process.env.OPENCODE_SESSION_TOKEN);
-    if (!rawOpenCodeToken || rawOpenCodeToken === 'public') {
-      return res.status(500).json({
-        error: { message: 'Server Configuration Error: OPENCODE_SESSION_TOKEN is missing in Hostinger environment variables.' }
-      });
+    // 1. Authenticate Client API Key
+    const requiredProxyKey = process.env.PROXY_API_KEY;
+    if (requiredProxyKey) {
+      const clientAuth = req.headers['authorization'];
+      const expectedAuth = requiredProxyKey.startsWith('Bearer ') ? requiredProxyKey : `Bearer ${requiredProxyKey}`;
+      
+      if (!clientAuth || clientAuth !== expectedAuth) {
+        return res.status(401).json({
+          error: { message: 'Unauthorized: Invalid or missing Proxy API Key', type: 'invalid_request_error' }
+        });
+      }
     }
 
-    const upstreamAuth = rawOpenCodeToken.startsWith('Bearer ') ? rawOpenCodeToken : `Bearer ${rawOpenCodeToken}`;
+    // 2. Prepare Upstream Token for OpenCode
+    const envToken = process.env.OPENCODE_SESSION_TOKEN;
+    const upstreamAuth = (envToken && envToken !== 'public') 
+      ? (envToken.startsWith('Bearer ') ? envToken : `Bearer ${envToken}`)
+      : 'Bearer public';
+
     const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
 
@@ -122,6 +116,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       }
     }
 
+    // Handle Streaming Response
     if (stream && upstreamResponse.body) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -136,18 +131,17 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.end();
     }
 
+    // Handle Non-Streaming Response
     const reader = upstreamResponse.body.getReader();
     const decoder = new TextDecoder();
     let accumulatedContent = '';
-    let lineBuffer = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       
-      lineBuffer += decoder.decode(value, { stream: true });
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop() || '';
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
       
       for (const line of lines) {
         const trimmed = line.trim();
@@ -157,7 +151,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.delta?.text || '';
             accumulatedContent += delta;
           } catch (e) {
-            // Ignore incomplete SSE chunks
+            // Ignore SSE chunk parsing errors
           }
         }
       }
@@ -185,5 +179,5 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Bypass Proxy running on port ${PORT} for ai.tatpc.ca`);
+  console.log(`Bypass Proxy running on port ${PORT} for AI.cpxs.ca`);
 });
