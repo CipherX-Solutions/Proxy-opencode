@@ -42,6 +42,17 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
+// Debug endpoint to check Hostinger environment variables
+app.get('/debug', (req, res) => {
+  const envToken = process.env.OPENCODE_SESSION_TOKEN;
+  const proxyKey = process.env.PROXY_API_KEY;
+  res.status(200).json({
+    hasOpenCodeToken: !!envToken && envToken !== 'public',
+    openCodeTokenPreview: envToken ? `${envToken.substring(0, 8)}...` : 'NONE',
+    isProxyKeyProtected: !!proxyKey
+  });
+});
+
 app.get('/v1/models', (req, res) => {
   res.status(200).json({
     object: 'list',
@@ -62,24 +73,37 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.status(400).json({ error: { message: 'Messages array is required' } });
     }
 
-    // 1. Authenticate Client API Key
+    const clientAuth = req.headers['authorization'];
     const requiredProxyKey = process.env.PROXY_API_KEY;
+    const envOpenCodeToken = process.env.OPENCODE_SESSION_TOKEN;
+
+    // 1. Check Proxy API Key (if configured on Hostinger)
     if (requiredProxyKey) {
-      const clientAuth = req.headers['authorization'];
-      const expectedAuth = requiredProxyKey.startsWith('Bearer ') ? requiredProxyKey : `Bearer ${requiredProxyKey}`;
-      
-      if (!clientAuth || clientAuth !== expectedAuth) {
+      const expectedProxyAuth = requiredProxyKey.startsWith('Bearer ') ? requiredProxyKey : `Bearer ${requiredProxyKey}`;
+      if (!clientAuth || clientAuth !== expectedProxyAuth) {
         return res.status(401).json({
           error: { message: 'Unauthorized: Invalid or missing Proxy API Key', type: 'invalid_request_error' }
         });
       }
     }
 
-    // 2. Prepare Upstream Token for OpenCode
-    const envToken = process.env.OPENCODE_SESSION_TOKEN;
-    const upstreamAuth = (envToken && envToken !== 'public') 
-      ? (envToken.startsWith('Bearer ') ? envToken : `Bearer ${envToken}`)
-      : 'Bearer public';
+    // 2. Select Upstream OpenCode Token
+    let upstreamAuth = null;
+    if (envOpenCodeToken && envOpenCodeToken !== 'public') {
+      upstreamAuth = envOpenCodeToken.startsWith('Bearer ') ? envOpenCodeToken : `Bearer ${envOpenCodeToken}`;
+    } else if (clientAuth && clientAuth !== 'Bearer public' && clientAuth !== `Bearer ${requiredProxyKey}`) {
+      upstreamAuth = clientAuth;
+    }
+
+    // Guardrail against sending unauthenticated calls to OpenCode
+    if (!upstreamAuth) {
+      return res.status(401).json({
+        error: {
+          message: "OPENCODE_SESSION_TOKEN missing in Hostinger environment variables.",
+          type: "missing_opencode_token"
+        }
+      });
+    }
 
     const targetModel = MODEL_MAP[model] || 'big-pickle';
     const upstreamUrl = 'https://opencode.ai/zen/v1/chat/completions';
@@ -116,7 +140,6 @@ app.post('/v1/chat/completions', async (req, res) => {
       }
     }
 
-    // Handle Streaming Response
     if (stream && upstreamResponse.body) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -131,7 +154,6 @@ app.post('/v1/chat/completions', async (req, res) => {
       return res.end();
     }
 
-    // Handle Non-Streaming Response
     const reader = upstreamResponse.body.getReader();
     const decoder = new TextDecoder();
     let accumulatedContent = '';
@@ -151,7 +173,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.delta?.text || '';
             accumulatedContent += delta;
           } catch (e) {
-            // Ignore SSE chunk parsing errors
+            // Ignore stream chunk parsing errors
           }
         }
       }
