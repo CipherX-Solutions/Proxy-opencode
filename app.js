@@ -1,4 +1,3 @@
-// app.js - Phusion Passenger CommonJS Wrapper
 (async () => {
   try {
     await import('./oc-api-proxy.mjs');
